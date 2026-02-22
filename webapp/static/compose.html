@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>MonkeySymbols — Compose</title>
+  <link rel="stylesheet" href="/static/compose.css" />
+</head>
+<body>
+  <div id="app">
+    <header>
+      <h1>MonkeySymbols Compose</h1>
+      <a href="/" class="back-link">← Slideshow</a>
+    </header>
+
+    <div id="layout">
+      <aside id="sidebar">
+        <section class="upload-group">
+          <label class="upload-label" for="template-input">
+            <span class="upload-icon">🖼</span>
+            <span class="upload-title">Template</span>
+            <span class="upload-hint">The foreground frame image</span>
+            <span class="upload-status" id="template-status">No file</span>
+          </label>
+          <input type="file" id="template-input" accept="image/*" hidden />
+          <canvas id="template-thumb" class="thumb" width="160" height="90"></canvas>
+        </section>
+
+        <section class="upload-group">
+          <label class="upload-label" for="mask-input">
+            <span class="upload-icon">◑</span>
+            <span class="upload-title">Mask</span>
+            <span class="upload-hint">B&W — white = photo shows, black = hidden</span>
+            <span class="upload-status" id="mask-status">No file</span>
+          </label>
+          <input type="file" id="mask-input" accept="image/*" hidden />
+          <canvas id="mask-thumb" class="thumb" width="160" height="90"></canvas>
+        </section>
+
+        <section class="upload-group">
+          <label class="upload-label" for="photos-input">
+            <span class="upload-icon">📂</span>
+            <span class="upload-title">Photos</span>
+            <span class="upload-hint">Select images to iterate behind the mask</span>
+            <span class="upload-status" id="photos-status">No files</span>
+          </label>
+          <input type="file" id="photos-input" accept="image/*,.avif" multiple hidden />
+        </section>
+
+        <div id="controls">
+          <button id="btn-compose" disabled>Compose All</button>
+          <button id="btn-download-all" disabled>Download ZIP</button>
+          <button id="btn-send-to-slideshow" disabled>Send to Slideshow</button>
+        </div>
+
+        <div id="progress-wrap" class="hidden">
+          <div id="progress-bar"><div id="progress-fill"></div></div>
+          <span id="progress-text">0 / 0</span>
+        </div>
+      </aside>
+
+      <main id="preview-area">
+        <div id="preview-empty">
+          <p>Upload a template, mask, and photo folder to get started.</p>
+        </div>
+        <canvas id="preview-canvas"></canvas>
+        <div id="preview-nav" class="hidden">
+          <button id="btn-prev">‹</button>
+          <span id="preview-counter">1 / 1</span>
+          <button id="btn-next">›</button>
+          <button id="btn-download-one">↓ Save This</button>
+        </div>
+      </main>
+    </div>
+  </div>
+
+  <script src="/static/compose.js"></script>
+</body>
+</html>

@@ -15,7 +15,7 @@
       const div = document.createElement("div");
       div.className = "slide" + (i === 0 ? " active" : "");
       const img = document.createElement("img");
-      img.src = "/public/" + encodeURIComponent(src);
+      img.src = "/slideshow/" + encodeURIComponent(src);
       img.alt = src;
       img.draggable = false;
       div.appendChild(img);
