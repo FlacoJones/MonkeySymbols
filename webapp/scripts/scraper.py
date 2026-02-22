@@ -3,105 +3,101 @@ import os
 import re
 import sys
 import time
-import json
 import hashlib
-from typing import Optional
 from urllib.parse import urlparse
 
 import requests
-from bs4 import BeautifulSoup
+from playwright.sync_api import sync_playwright
 
 GDELT_DOC_ENDPOINT = "https://api.gdeltproject.org/api/v2/doc/doc"
 
 DEFAULT_QUERY = '"Donald Trump"'
-DEFAULT_TIMESPAN = "7d"  # recent window (e.g., 1d, 7d, 1w, 1m)
-MAX_ARTICLES_TO_SCAN = 50  # scan this many article URLs to find 5 images
-IMAGES_TO_DOWNLOAD = 5
-OUT_DIR = "headline_images"
+DEFAULT_TIMESPAN = "7d"
+MAX_ARTICLES_TO_SCAN = 30
+IMAGES_TO_CAPTURE = 3
+OUT_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "public")
 
-UA = "Mozilla/5.0 (X11; Linux aarch64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120 Safari/537.36 (HeadlineImageDownloader/1.0)"
+VIEWPORT = {"width": 1920, "height": 1080}
+
+US_DOMAINS = {
+    "nytimes.com", "washingtonpost.com", "cnn.com", "foxnews.com",
+    "nbcnews.com", "cbsnews.com", "abcnews.go.com", "usatoday.com",
+    "politico.com", "thehill.com", "reuters.com", "apnews.com",
+    "npr.org", "pbs.org", "bloomberg.com", "wsj.com", "latimes.com",
+    "chicagotribune.com", "nypost.com", "newsweek.com", "time.com",
+    "axios.com", "thedailybeast.com", "huffpost.com", "vox.com",
+    "msnbc.com", "cnbc.com", "bbc.com", "theguardian.com",
+}
+
+UA = (
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+    "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120 Safari/537.36"
+)
 
 SESSION = requests.Session()
 SESSION.headers.update({"User-Agent": UA})
 
 
-def safe_filename(s: str, max_len: int = 120) -> str:
+def safe_filename(s: str, max_len: int = 80) -> str:
     s = re.sub(r"\s+", " ", s).strip()
     s = re.sub(r"[^a-zA-Z0-9._ -]+", "", s)
     s = s.replace(" ", "_")
-    return (s[:max_len] if len(s) > max_len else s) or "image"
+    return (s[:max_len] if len(s) > max_len else s) or "page"
+
+
+def is_us_source(domain: str) -> bool:
+    domain = domain.lower().strip()
+    for us in US_DOMAINS:
+        if domain == us or domain.endswith("." + us):
+            return True
+    return False
 
 
 def fetch_gdelt_articles(query: str, timespan: str, maxrecords: int) -> list[dict]:
     params = {
-        "query": query,
+        "query": f"{query} sourcelang:eng sourcecountry:US",
         "mode": "ArtList",
         "format": "json",
         "timespan": timespan,
         "maxrecords": maxrecords,
-        "sort": "HybridRel",  # try "DateDesc" if you prefer newest-first
+        "sort": "HybridRel",
     }
-    r = SESSION.get(GDELT_DOC_ENDPOINT, params=params, timeout=20)
+    max_retries = 5
+    for attempt in range(1, max_retries + 1):
+        print(f"  GDELT request attempt {attempt}/{max_retries}...")
+        r = SESSION.get(GDELT_DOC_ENDPOINT, params=params, timeout=20)
+        print(f"  Response: {r.status_code} ({len(r.content)} bytes)")
+        if r.status_code == 429:
+            wait = 5 * attempt
+            print(f"  Rate-limited (429). Retrying in {wait}s...")
+            time.sleep(wait)
+            continue
+        if r.status_code >= 400:
+            print(f"  Server error ({r.status_code}). Retrying in {5 * attempt}s...")
+            time.sleep(5 * attempt)
+            continue
+        data = r.json()
+        articles = data.get("articles", [])
+        print(f"  Got {len(articles)} articles.")
+        return articles
+    print(f"  All {max_retries} attempts failed (last status: {r.status_code}).")
     r.raise_for_status()
-    data = r.json()
-    return data.get("articles", [])
+    return []
 
 
-def extract_social_image(url: str) -> Optional[str]:
-    """
-    Returns best-effort social image URL from meta tags:
-    og:image, twitter:image, etc.
-    """
-    r = SESSION.get(url, timeout=20, allow_redirects=True)
-    r.raise_for_status()
-
-    soup = BeautifulSoup(r.text, "lxml")
-
-    # Prefer OG image
-    for key in ["og:image", "og:image:url", "twitter:image", "twitter:image:src"]:
-        tag = soup.find("meta", attrs={"property": key}) or soup.find(
-            "meta", attrs={"name": key}
-        )
-        if tag and tag.get("content"):
-            img = tag["content"].strip()
-            if img:
-                return img
-
-    return None
-
-
-def guess_ext_from_headers(resp: requests.Response, fallback_url: str) -> str:
-    ctype = (resp.headers.get("Content-Type") or "").lower()
-    if "image/jpeg" in ctype or "image/jpg" in ctype:
-        return ".jpg"
-    if "image/png" in ctype:
-        return ".png"
-    if "image/webp" in ctype:
-        return ".webp"
-    if "image/gif" in ctype:
-        return ".gif"
-
-    # fallback: parse url path
-    path = urlparse(fallback_url).path.lower()
-    for ext in [".jpg", ".jpeg", ".png", ".webp", ".gif"]:
-        if path.endswith(ext):
-            return ".jpg" if ext == ".jpeg" else ext
-
-    return ".img"
-
-
-def download_image(img_url: str, out_path_no_ext: str) -> str:
-    r = SESSION.get(img_url, stream=True, timeout=25, allow_redirects=True)
-    r.raise_for_status()
-
-    ext = guess_ext_from_headers(r, img_url)
-    out_path = out_path_no_ext + ext
-
-    with open(out_path, "wb") as f:
-        for chunk in r.iter_content(chunk_size=1024 * 64):
-            if chunk:
-                f.write(chunk)
-
+def screenshot_page(browser, url: str, out_path: str) -> str:
+    context = browser.new_context(
+        viewport=VIEWPORT,
+        user_agent=UA,
+        locale="en-US",
+    )
+    page = context.new_page()
+    try:
+        page.goto(url, wait_until="domcontentloaded", timeout=30000)
+        page.wait_for_timeout(3000)
+        page.screenshot(path=out_path, full_page=False)
+    finally:
+        context.close()
     return out_path
 
 
@@ -113,7 +109,8 @@ def main():
 
     print(f"Query: {query}")
     print(f"Timespan: {timespan}")
-    print("Fetching articles from GDELT...")
+    print(f"Output: {OUT_DIR}")
+    print("Fetching articles from GDELT (US sources only)...")
 
     try:
         articles = fetch_gdelt_articles(
@@ -127,52 +124,52 @@ def main():
         print("No articles returned.")
         return 1
 
-    downloaded = 0
-    scanned = 0
+    us_articles = [
+        a for a in articles
+        if a.get("domain") and is_us_source(a["domain"])
+    ]
+    print(f"Found {len(articles)} articles, {len(us_articles)} from US sources.\n")
 
-    for a in articles:
-        if downloaded >= IMAGES_TO_DOWNLOAD:
-            break
+    if not us_articles:
+        print("No US-source articles found. Try a broader query or timespan.")
+        return 1
 
-        url = a.get("url")
-        title = a.get("title") or "untitled"
-        domain = a.get("domain") or urlparse(url).netloc if url else "unknown"
+    captured = 0
 
-        if not url:
-            continue
+    with sync_playwright() as pw:
+        browser = pw.chromium.launch(headless=True)
 
-        scanned += 1
-        print(f"\n[{scanned}/{len(articles)}] {domain} — {title}")
-        print(f"URL: {url}")
+        for a in us_articles:
+            if captured >= IMAGES_TO_CAPTURE:
+                break
 
-        try:
-            img = extract_social_image(url)
-            if not img:
-                print("  No og:image/twitter:image found; skipping.")
+            url = a.get("url")
+            title = a.get("title") or "untitled"
+            domain = a.get("domain") or urlparse(url).netloc
+
+            if not url:
                 continue
 
-            # stable file stem: domain + hash(url) + title snippet
-            h = hashlib.sha256(url.encode("utf-8")).hexdigest()[:10]
-            stem = f"{domain}_{h}_{safe_filename(title, 70)}"
-            out_no_ext = os.path.join(OUT_DIR, stem)
+            print(f"[{captured + 1}/{IMAGES_TO_CAPTURE}] {domain} — {title}")
+            print(f"  URL: {url}")
 
-            path = download_image(img, out_no_ext)
-            downloaded += 1
-            print(f"  Downloaded: {path}")
-            print(f"  Image URL:  {img}")
+            try:
+                h = hashlib.sha256(url.encode("utf-8")).hexdigest()[:10]
+                stem = f"{safe_filename(domain, 30)}_{h}_{safe_filename(title, 50)}"
+                out_path = os.path.join(OUT_DIR, f"{stem}.png")
 
-            # be polite
-            time.sleep(0.5)
+                screenshot_page(browser, url, out_path)
+                captured += 1
+                print(f"  Saved: {out_path}\n")
 
-        except requests.HTTPError as e:
-            print(f"  HTTP error: {e}")
-        except Exception as e:
-            print(f"  Error: {e}")
+                time.sleep(3)
 
-    print(f"\nDone. Downloaded {downloaded} images into ./{OUT_DIR}/")
-    if downloaded < IMAGES_TO_DOWNLOAD:
-        print("Tip: try a larger timespan (e.g. 14d) or loosen query to 'Trump'.")
+            except Exception as e:
+                print(f"  Error: {e}\n")
 
+        browser.close()
+
+    print(f"Done. Captured {captured} screenshots into {OUT_DIR}/")
     return 0
 
 
