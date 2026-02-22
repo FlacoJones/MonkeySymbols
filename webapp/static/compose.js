@@ -13,6 +13,8 @@
   const btnCompose = document.getElementById("btn-compose");
   const btnDownloadAll = document.getElementById("btn-download-all");
   const btnSendSlideshow = document.getElementById("btn-send-to-slideshow");
+  const btnReset = document.getElementById("btn-reset");
+  const btnCopy = document.getElementById("btn-copy");
   const progressWrap = document.getElementById("progress-wrap");
   const progressFill = document.getElementById("progress-fill");
   const progressText = document.getElementById("progress-text");
@@ -449,6 +451,46 @@
     setTimeout(() => {
       btnSendSlideshow.textContent = "Send to Slideshow";
       btnSendSlideshow.disabled = false;
+    }, 2000);
+  });
+  // ── Copy photos from ~/Desktop/trump ──
+
+  btnCopy.addEventListener("click", async () => {
+    btnCopy.textContent = "Copying…";
+    btnCopy.disabled = true;
+
+    try {
+      const res = await fetch("/api/copy-photos", { method: "POST" });
+      if (!res.ok) throw new Error();
+      const result = await res.json();
+      btnCopy.textContent = result.copied + " copied";
+    } catch {
+      btnCopy.textContent = "Failed";
+    }
+    setTimeout(() => {
+      btnCopy.textContent = "Copy Photos";
+      btnCopy.disabled = false;
+    }, 2000);
+  });
+
+  // ── Reset folders ──
+
+  btnReset.addEventListener("click", async () => {
+    if (!confirm("Delete all files in public/ and slideshow/?")) return;
+    btnReset.textContent = "Clearing…";
+    btnReset.disabled = true;
+
+    try {
+      const res = await fetch("/api/reset", { method: "DELETE" });
+      if (!res.ok) throw new Error();
+      const result = await res.json();
+      btnReset.textContent = result.deleted + " deleted";
+    } catch {
+      btnReset.textContent = "Failed";
+    }
+    setTimeout(() => {
+      btnReset.textContent = "Reset Folders";
+      btnReset.disabled = false;
     }, 2000);
   });
 })();

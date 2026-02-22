@@ -92,6 +92,42 @@ function parseMultipart(buf, boundary) {
   return results;
 }
 
+const os = require("os");
+const TRUMP_DIR = path.join(os.homedir(), "Desktop", "trump");
+
+app.post("/api/copy-photos", (_req, res) => {
+  if (!fs.existsSync(TRUMP_DIR)) {
+    return res.status(404).json({ error: "~/Desktop/trump not found" });
+  }
+  if (!fs.existsSync(PUBLIC_DIR)) fs.mkdirSync(PUBLIC_DIR, { recursive: true });
+
+  let copied = 0;
+  for (const file of fs.readdirSync(TRUMP_DIR)) {
+    const ext = path.extname(file).toLowerCase();
+    if (!IMAGE_EXT.has(ext)) continue;
+    const src = path.join(TRUMP_DIR, file);
+    if (!fs.statSync(src).isFile()) continue;
+    fs.copyFileSync(src, path.join(PUBLIC_DIR, file));
+    copied++;
+  }
+  res.json({ copied });
+});
+
+app.delete("/api/reset", (_req, res) => {
+  let deleted = 0;
+  for (const dir of [PUBLIC_DIR, SLIDESHOW_DIR]) {
+    if (!fs.existsSync(dir)) continue;
+    for (const file of fs.readdirSync(dir)) {
+      const full = path.join(dir, file);
+      if (fs.statSync(full).isFile()) {
+        fs.unlinkSync(full);
+        deleted++;
+      }
+    }
+  }
+  res.json({ deleted });
+});
+
 app.use("/public", express.static(PUBLIC_DIR));
 app.use("/slideshow", express.static(SLIDESHOW_DIR));
 app.use("/assets", express.static(path.join(__dirname, "image_processing")));
