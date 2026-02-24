@@ -229,10 +229,21 @@
 
     offCtx.drawImage(templateImg, 0, 0, w, h);
     offCtx.globalCompositeOperation = "destination-out";
+    const feather = Math.round(Math.max(w, h) * 0.003);
+    offCtx.filter = "blur(" + feather + "px)";
     offCtx.drawImage(alphaMask, 0, 0, w, h);
+    offCtx.filter = "none";
 
     // 4) Layer the punched template over the aged photo
     ctx.drawImage(offscreen, 0, 0);
+
+    // 5) Slight vignette over the entire composite
+    const vr = Math.sqrt(w * w + h * h) / 2;
+    const vg = ctx.createRadialGradient(w / 2, h / 2, vr * 0.55, w / 2, h / 2, vr);
+    vg.addColorStop(0, "rgba(0,0,0,0)");
+    vg.addColorStop(1, "rgba(0,0,0,0.25)");
+    ctx.fillStyle = vg;
+    ctx.fillRect(0, 0, w, h);
 
     return out;
   }
