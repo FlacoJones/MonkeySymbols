@@ -6,8 +6,8 @@ Monitors a momentary push-button on a GPIO pin and sends "next"
 to the slideshow server's WebSocket endpoint each time it's pressed.
 
 Wiring (momentary switch, simplest safe setup):
-  - One leg of the switch → GND
-  - Other leg → GPIO pin (default: GPIO17 / physical pin 11)
+  - One leg of the switch → GND (e.g. physical pin 9, 14, 20, 25, 30, 34, or 39)
+  - Other leg → GPIO6 (physical pin 31)
   - Internal pull-up is enabled, so no external resistor needed.
 
 If your pulse source outputs >3.3V, use an opto-isolator or
@@ -60,8 +60,8 @@ async def run(pin: int, server_url: str, bounce: float):
 def main():
     parser = argparse.ArgumentParser(description="GPIO → slideshow bridge")
     parser.add_argument(
-        "--pin", type=int, default=17,
-        help="BCM GPIO pin number (default: 17)",
+        "--pin", type=int, default=6,
+        help="BCM GPIO pin number (default: 6)",
     )
     parser.add_argument(
         "--server", type=str, default="ws://localhost:8080/ws",
@@ -73,10 +73,11 @@ def main():
     )
     args = parser.parse_args()
 
-    loop = asyncio.new_event_loop()
-    loop.add_signal_handler(signal.SIGINT, lambda: sys.exit(0))
-    loop.add_signal_handler(signal.SIGTERM, lambda: sys.exit(0))
-    loop.run_until_complete(run(args.pin, args.server, args.bounce))
+    try:
+        asyncio.run(run(args.pin, args.server, args.bounce))
+    except KeyboardInterrupt:
+        print("\nBye.")
+        sys.exit(0)
 
 
 if __name__ == "__main__":

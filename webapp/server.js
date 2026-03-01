@@ -23,6 +23,7 @@ wss.on("connection", (ws) => {
   ws.on("message", (data) => {
     const cmd = data.toString().trim().toLowerCase();
     if (cmd === "next" || cmd === "prev") {
+      console.log(`[ws] received "${cmd}" → broadcasting to ${clients.size - 1} client(s)`);
       for (const client of clients) {
         if (client !== ws && client.readyState === ws.OPEN) {
           client.send(cmd);
