@@ -3,5 +3,3 @@ node_modules/
 .venv/
 __pycache__/
 *.pyc
-webapp/public/
-webapp/slideshow/
